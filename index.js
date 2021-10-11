@@ -33,6 +33,8 @@ function webGL() {
     // look up where the vertex data needs to go.
     var positionAttributeLocation = gl.getAttribLocation(program, "a_position");
 
+    // look up uniform locations
+    var resolutionUniformLocation = gl.getUniformLocation(program, "u_resolution");
 
     setGeometry(gl);
     drawScene();
@@ -59,9 +61,13 @@ function webGL() {
 
     // 添加三角形
     function setGeometry(gl) {
-        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([0, 0,
-            0, 0.5,
-            0.2, 0]),
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+            10, 20,
+            80, 20,
+            10, 30,
+            10, 30,
+            80, 20,
+            80, 30,]),
             gl.STATIC_DRAW);
     }
 
@@ -92,9 +98,12 @@ function webGL() {
         gl.vertexAttribPointer(
             positionAttributeLocation, size, type, normalize, stride, offset);
 
+        // set the resolution
+        gl.uniform2f(resolutionUniformLocation, gl.canvas.width, gl.canvas.height);
+
         let primitiveType = gl.TRIANGLES;
         offset = 0;
-        let count = 3;
+        let count = 6;
         gl.drawArrays(primitiveType, offset, count);
     }
 }

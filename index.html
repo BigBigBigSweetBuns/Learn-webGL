@@ -29,7 +29,7 @@
 </body>
 
 </html>
-<script id="vertex-shader-2d" type="notjs">
+<!-- <script id="vertex-shader-2d" type="notjs">
 
   // an attribute will receive data from a buffer
   attribute vec4 a_position;
@@ -42,6 +42,24 @@
     gl_Position = a_position;
   }
 
+</script> -->
+<script  id="vertex-shader-2d" type="notjs">
+  attribute vec4 a_position;
+
+  uniform vec2 u_resolution;
+
+  void main() {
+     // convert the position from pixels to 0.0 to 1.0
+     vec2 zeroToOne = a_position.xy / u_resolution;
+
+     // convert from 0->1 to 0->2
+     vec2 zeroToTwo = zeroToOne * 2.0;
+
+     // convert from 0->2 to -1->+1 (clipspace)
+     vec2 clipSpace = zeroToTwo - 1.0;
+
+     gl_Position = vec4(clipSpace, 0, 1);
+  }
 </script>
 <script id="fragment-shader-2d" type="notjs">
 
