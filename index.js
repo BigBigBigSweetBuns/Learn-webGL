@@ -2,33 +2,6 @@ window.onload = function () {
     webGL();
 }
 
-function createShader(gl, type, source) {
-    var shader = gl.createShader(type);
-    gl.shaderSource(shader, source);
-    gl.compileShader(shader);
-    var success = gl.getShaderParameter(shader, gl.COMPILE_STATUS);
-    if (success) {
-        return shader;
-    }
-
-    console.log(gl.getShaderInfoLog(shader));
-    gl.deleteShader(shader);
-}
-
-function createProgram(gl, vertexShader, fragmentShader) {
-    var program = gl.createProgram();
-    gl.attachShader(program, vertexShader);
-    gl.attachShader(program, fragmentShader);
-    gl.linkProgram(program);
-    var success = gl.getProgramParameter(program, gl.LINK_STATUS);
-    if (success) {
-        return program;
-    }
-
-    console.log(gl.getProgramInfoLog(program));
-    gl.deleteProgram(program);
-}
-
 function webGL() {
     const canvas = document.querySelector("#glcanvas");
     // 初始化WebGL上下文
@@ -51,8 +24,8 @@ function webGL() {
     var fragmentShaderSource = document.querySelector("#fragment-shader-2d").text;
 
     // create GLSL shaders, upload the GLSL source, compile the shaders
-    var vertexShader = createShader(gl, gl.VERTEX_SHADER, vertexShaderSource);
-    var fragmentShader = createShader(gl, gl.FRAGMENT_SHADER, fragmentShaderSource);
+    var vertexShader = compileShader(gl, vertexShaderSource, gl.VERTEX_SHADER);
+    var fragmentShader = compileShader(gl, fragmentShaderSource, gl.FRAGMENT_SHADER);
 
     // Link the two shaders into a program
     var program = createProgram(gl, vertexShader, fragmentShader);
@@ -88,7 +61,7 @@ function webGL() {
     function setGeometry(gl) {
         gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([0, 0,
             0, 0.5,
-            0.2, 0,]),
+            0.2, 0]),
             gl.STATIC_DRAW);
     }
 
