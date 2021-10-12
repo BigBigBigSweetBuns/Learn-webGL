@@ -61,8 +61,8 @@
      gl_Position = vec4(clipSpace * vec2(1, -1), 0, 1); 
   }
 </script>
-<script id="fragment-shader-2d" type="notjs">
-
+<!-- <script id="fragment-shader-2d" type="notjs">
+  // index.js
   // fragment shaders don't have a default precision so we need
   // to pick one. mediump is a good default
   precision mediump float;
@@ -73,6 +73,18 @@
     gl_FragColor = vec4(1, 0, 0.5, 1); // return redish-purple
   }
 
+</script> -->
+<script id="fragment-shader-2d" type="notjs">
+  // pluralRectangle.js
+  precision mediump float;
+ 
+  uniform vec4 u_color;
+ 
+  void main() {
+    gl_FragColor = u_color;
+  }
 </script>
-<script src="./webgl-utils.js"></script>
+<script src="./lib/webgl-utils.js"></script>
+<!-- <script src="./webgl-utils.js"></script> -->
+<script src="./pluralRectangle.js"></script>
 <script src="./index.js"></script>
