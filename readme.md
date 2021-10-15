@@ -1089,12 +1089,95 @@ seconds = (number_frames-1) / (30 frames/ 1 sec);
 
 
 
+### 更新屏幕和动画
+
+### 双缓冲 Double Buffering
+
+WebGL 自动实现 **双缓冲**  ( Double Buffering ) 。
+
+它总是将您的图形渲染到屏幕外的帧缓冲区中。屏幕上可见的是“第二个”帧缓冲区——因此称为“双”缓冲。
+
+**渲染是在屏幕外完成的**，因此用户**永远不会看到单个像素的变化**。
+
+在屏幕外帧缓冲区中的所有像素都已分配颜色并且屏幕外缓冲区已复制到屏幕的帧缓冲区后，**用户始终会看到已完成的渲染**。*双缓冲*是标准做法，这就是 WebGL 自动实现它的原因。
+
+
+
+#### 更新屏幕显示
+
+WebGL 程序通常设计为以特定的帧速率制作动画，并且该帧速率需要是显示器刷新率的倍数。
+
+
+
+#### requestAnimationFrame() 函数
+
+可以使用 JavaScript 计时器事件构建 WebGL 动画，但计时器事件不是为动画设计的。
+
+JavaScript 引入了一个专门用于动画的函数，称为 `requestAnimationFrame`. 此函数将请求在下一次刷新绘制过程尝试更新屏幕帧缓冲区之前调用指定的回调函数，但需要注意的是，如果 WebGL 窗口不可见，则不会执行任何操作。
+
+##### 典型的动画函数执行以下任务：
+
+- 计算自上一帧渲染以来经过的时间量。
+- 如果是时候渲染一个新帧：
+  - 更改适当的场景变量
+  - 渲染场景
+- 调用`requestAnimationFrame`以在将来继续渲染。
+
+##### 下面显示了一个示例动画函数。
+
+```
+//------------------------------------------------------------------------------
+self.animate = function () {
+
+  var now, elapsed_time;
+
+  if (scene.animate_active) {
+
+    // How much time has elapsed since the last frame rendering?
+    now = Date.now();
+    elapsed_time = now - previous_time;
+
+    if (elapsed_time >= frame_rate) {
+      // Change the scene.
+      scene.angle_x -= 0.5;
+      scene.angle_y += 1;
+
+      // Render the scene.
+      scene.render();
+
+      // Remember when this scene was rendered.
+      previous_time = now;
+    }
+
+    requestAnimationFrame(self.animate);
+  }
+};
+```
+
+请注意有关此代码的以下内容：
+
+- 该 `requestAnimationFrame` 设置回调同样的功能它在不在。
+- 该 `previous_time` 变量在此函数之外声明，因此它可以从一个函数调用到下一个函数调用保留其值。
+- 必须有某种机制来停止动画。此代码使用场景对象中变量名为 `animate_active` 。通过将设置 `false`  ，外部进程可以停止动画 。
+- 准确计时要求您跟踪从一帧渲染开始到下一帧开始的时间。请注意，`Date.now()` 在任何渲染之间调用一次，并且该值保存在局部变量中。该局部变量用于 `previous_time` 在渲染完成后更新值。不要再打调用`Date.now()`了。如果您这样做了，您将在不考虑渲染时间的情况下计算帧之间的时间。
+- 该变量`frame_rate`设置为为每帧分配的毫秒数。一个典型的任务是：`var frame_rate = 16; // 16 milliseconds = 1/60 sec`
+
+
+
 ### 相关链接
 
 [^5.1]: Moving a Camera http://learnwebgl.brown37.net/07_cameras/camera_linear_motion.html
 [^5.2]:rotating a Camera http://learnwebgl.brown37.net/07_cameras/camera_rotating_motion.html
 [^5.3]:Points Along A Path http://learnwebgl.brown37.net/07_cameras/points_along_a_path.html
 [^5.4]:Timing Along A Path http://learnwebgl.brown37.net/07_cameras/timing_along_a_path.html
+[^5.5]:Screen Updates and Animation http://learnwebgl.brown37.net/07_cameras/screen_updates_and_animation.html
+[^5.6]:
+[^5.7]:
+[^5.8]:
+[^5.9]:
+[^5.10]:
+[^5.11]:
+
 
 
 ## 实例化操作
