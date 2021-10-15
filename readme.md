@@ -878,6 +878,225 @@ n --> z
 
 
 
+## 2021.10.15
+
+这是每日的记录，相机部分的内容可能会出现重复。后期会重新整理文档，将其整合。
+
+
+
+### 移动相机[^5.1]
+
+暂时跳过，对向量的了解不够深入
+
+
+
+### 旋转相机[^5.2]
+
+
+
+### 路径上的点[^5.3]
+
+计算动画运行时，每个关键帧，当前在该路径上运动到的点的位置（坐标）。
+
+#### 参数方程
+
+```
+p  =  ( 1 - t ) * p1  +  t * p2 ;   // 其中 t 从 0.0 变化到 1.0
+```
+
+请注意以下几点：
+
+- 当 t = 0.0 时，方程变为 p = p1。
+- 当 t = 1.0 时，方程变为 p = p2。
+- 当 t = 0.25 时，方程变为 p = 0.75\*p1 + 0.25\*p2。点 p 与 p1 相距 25%，与 p2 相距 75%。
+- t + (1-t) 总是等于 1.0。这意味着我们总是得到 100% 的两点。对于任何 t 值，您将取 p2 的 t% 和 p1 的剩余百分比。
+- 对于 3D 空间中的直线，我们计算 
+- 
+- 个值，但只改变单个参数 t：
+  - p <sub>x</sub> = ( 1 - t ) \* p1 <sub>x</sub> + t \* p2 <sub>x</sub>
+  - p <sub>y</sub> = ( 1 - t ) \* p1 <sub>y</sub> + t \* p2 <sub>y</sub>
+  - p <sub>z</sub> = ( 1 - t ) \* p1 <sub>z</sub> + t \* p2 <sub>z</sub>
+
+所有参数方程都采用**原始值的百分比**来生成中间值。这是一个非常简单而优雅的想法。
+
+#### 圆形路径
+
+由于所有的旋转都是围绕原点进行的，需要做以下三个步骤：
+
+1. 将中心点平移到全局原点。
+2. 使用旋转变换绕旋转轴旋转。
+3. 将中心点平移回其原始位置。
+
+
+
+### 随时间改变的路径
+
+`dt` : 恒定速度下，完成每帧动画所经过的路径百分比 ( % ) 
+
+
+
+#### 速度和加速度
+
+你有 3 个设计动画的场景：
+
+1. 您决定移动的距离和移动的时间。
+2. 您决定移动速度和移动时间。
+3. 您决定移动距离和速度。
+
+
+
+##### 距离、时间和速度使用以下基本公式相互关联：
+
+```javascript
+speed    = distance / time ; // 速度 = 路程 / 时间
+distance = speed    * time ; // 距离 = 速度 * 时间
+time     = distance / speed; // 时间 = 距离 / 速度
+```
+
+对于动画，您可以以**秒**或**帧**为单位测量**时间**。可以使用与您的虚拟场景一致的任何单位来测量距离。
+
+请记住，WebGL 是无单位的，您需要为**所有测量使用一致的单位**。
+
+##### 恒定速度运动
+
+```javascript
+number_frames = ending_frame - starting_frame + 1;
+dt = 1.0 / (number_frames-1); // 完成每帧动画所经过的路径百分比
+
+seconds = (number_frames-1) / (30 frames/ 1 sec);
+```
+
+##### 不恒定速度运动
+
+一个动画的不恒定速度运动的为下表:
+
+<table>
+    <tr>
+      <th>帧数</th>
+      <th>100</th>
+      <th>101</th>
+      <th>102</th>
+      <th>103</th>
+      <th>104</th>
+      <th>105</th>
+      <th>106</th>
+      <th>107</th>
+      <th>108</th>
+      <th>109</th>
+      <th>110</th>
+    </tr>
+    <tr>
+      <td>dt =</td>
+      <td></td>
+      <td>?</td>
+      <td>?</td>
+      <td>?</td>
+      <td>dt</td>
+      <td>dt</td>
+      <td>dt</td>
+      <td>dt</td>
+      <td>dt</td>
+      <td>?</td>
+      <td>?</td>
+    </tr>
+    <tr>
+      <td>t =</td>
+      <td>0.000</td>
+      <td>?</td>
+      <td>?</td>
+      <td>?</td>
+      <td>?</td>
+      <td>?</td>
+      <td>?</td>
+      <td>?</td>
+      <td>?</td>
+      <td>?</td>
+      <td>1.00</td>
+    </tr>
+    <tr>
+      <td></td>
+      <td colspan="4">加速</td>
+      <td colspan="5">恒速</td>
+      <td colspan="2">减速</td>
+    </tr>
+  </table>
+假设加速曲线如下：
+
+
+```javascript
+1.0  =  // 总路程
+    	1 / 6 * dt  +  3 / 6 * dt  +  5 / 6 * dt  +  // 加速度
+ 		dt  +  dt  +  dt  +  dt  +  dt  +  // 恒速
+		3 / 4 * dt  +  1 / 4 * dt ; // 减速
+```
+
+可以计算出，完整路程时， `7.5*dt === 1.0` 。所以 `dt` 必须是 1/7.5 或 0.1333。 
+
+<table>
+    <tr>
+      <th>帧数</th>
+      <th>100</th>
+      <th>101</th>
+      <th>102</th>
+      <th>103</th>
+      <th>104</th>
+      <th>105</th>
+      <th>106</th>
+      <th>107</th>
+      <th>108</th>
+      <th>109</th>
+      <th>110</th>
+    </tr>
+    <tr>
+      <td>dt =</td>
+      <td>0.000</td>
+      <td>0.022</td>
+      <td>0.067</td>
+      <td>0.111</td>
+      <td>0.133</td>
+      <td>0.133</td>
+      <td>0.133</td>
+      <td>0.133</td>
+      <td>0.133</td>
+      <td>0.100</td>
+      <td>0.033</td>
+    </tr>
+    <tr>
+      <td>t =</td>
+      <td>0.000</td>
+      <td>0.022</td>
+      <td>0.088</td>
+      <td>0.200</td>
+      <td>0.333</td>
+      <td>0.467</td>
+      <td>0.600</td>
+      <td>0.733</td>
+      <td>0.866</td>
+      <td>0.966</td>
+      <td>1.000</td>
+    </tr>
+    <tr>
+      <td></td>
+      <td colspan="4">加速</td>
+      <td colspan="5">恒速</td>
+      <td colspan="2">减速</td>
+    </tr>
+  </table>
+
+这个`dt`值是 0.133，而对于原来的“恒速”问题，这个`dt`值是 0.1。
+
+**持续运动的速度**必须更大以弥补**加速和减速过程中损失的时间**。
+
+
+
+### 相关链接
+
+[^5.1]: Moving a Camera http://learnwebgl.brown37.net/07_cameras/camera_linear_motion.html
+[^5.2]:rotating a Camera http://learnwebgl.brown37.net/07_cameras/camera_rotating_motion.html
+[^5.3]:Points Along A Path http://learnwebgl.brown37.net/07_cameras/points_along_a_path.html
+[^5.4]:Timing Along A Path http://learnwebgl.brown37.net/07_cameras/timing_along_a_path.html
+
+
 ## 实例化操作
 
 操作，了解webGL相机 http://learnwebgl.brown37.net/07_cameras/camera_lookat/camera_lookat.html
