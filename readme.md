@@ -1215,7 +1215,534 @@ self.animate = function () {
 [^5.5]:Screen Updates and Animation http://learnwebgl.brown37.net/07_cameras/screen_updates_and_animation.html
 
 
+
+## 2021.10.18
+
+
+
+### 投影简介[^6.1]
+
+计算机图形中有两种标准投影:
+
+- **正交投影** 保持平行线，但是没有提供深度感。
+- **透视投影** 提供深度感，但平行线朝消失点倾斜。 
+
+#### 投影变换的主要任务：是将 3D 场景投影到 2D 屏幕上
+
+投影转换还为这些后续任务做准备：
+
+- 剪裁 - 删除不在相机视线范围内的元素。
+- 视口映射 - 将相机的**查看窗口**转换为图像的像素。
+- 隐藏表面去除 - 确定哪些对象位于其他对象的前面。
+
+#### 剪辑
+
+> 考虑如何使用编程逻辑完成剪切点。
+
+要确定定义为 (x,y,z) 的点是否在裁剪体积内，您可以编写如下代码：
+
+```
+if (x >= -1 and x <= 1 and
+    y >= -1 and y <= 1 and
+    z >= -1 and z <= 1)
+  point_is_visible = true;
+else
+  point_is_visible = false;
+```
+
+但是，由于**剪切量是均匀**的并且关于原点对称，我们可以使用**绝对值**函数简化此代码：
+
+```
+if (abs(x) <= 1 and abs(y) <= 1 and abs(z) <= 1)
+     point_is_visible = true;
+else
+     point_is_visible = false;
+```
+
+此外，您可以使用如下简单的赋值来设置布尔值：
+
+```
+point_is_visible = (abs(x) <= 1 and abs(y) <= 1 and abs(z) <= 1)
+```
+
+实际上裁剪是在**齐次坐标** (Homogeneous Coordinates) 中完成的。对于 (x,y,z,w) 顶点，裁剪测试将是
+
+```
+point_is_visible = (abs(x) <= w and abs(y) <= w and abs(z) <= w)
+```
+
+#### 什么时候处理投影变化
+
+> 投影变换必须在场景移动到虚拟摄像机前之后、裁剪发生之前发生。
+>
+
+投影操作可以使用 4×4 矩阵乘法来执行，因此它通常与**模型**变换和**相机**（或**视图**）变换相结合，这些变换已经在管道的前几阶段在概念上执行。
+
+**模型**、**视图**和**投影** 转换通常使用单个矩阵乘法来执行。
+
+#### 顶点变换方程式
+
+$$
+VertexTransform =  [ProjectionMatrix]  *  [ViewMatrix]   *   [ModelMatrix]
+$$
+
+
+
+### 正交投影[^6.2]
+
+> 工程领域使用**正交**投影来创建模型的准确渲染。它们保持平行线，但不提供深度感。
+>
+
+#### createOrthographic() 函数
+
+> 功能 `createOrthographic()` 中 `Learn_webgl_matrix.js` 模块创建的正投影变换矩阵。
+
+该函数需要 6 个参数：
+
+```javascript
+/** -----------------------------------------------------------------
+ * Create an orthographic projection matrix.
+ * @param left   Number x轴的最左侧，裁切的最左边
+ * @param right  Number x轴的最右侧，裁切的最右边
+ * @param bottom Number y轴的最下边，裁切的最上边
+ * @param top    Number y轴的最上边，裁切的最下边
+ * @param near   Number z轴起始的裁切范围 (最近视距)
+ * @param far    Number z轴最远的裁切范围 (最远视距)
+ * @return Float32Array The orthographic transformation matrix
+ */
+function createOrthographic(left, right, bottom, top, near, far) // 创建正投影变换矩阵
+```
+
+请确保您**观察正交投影**的以下特征：
+
+- 视域外的基本元素（点、线或三角形）从视图中剪掉。（单个元素可以部分可见。）
+- 有两个相同的模型，但每个模型与相机的距离不同。请注意：两个模型的渲染大小相同。
+- 模型中的**平行线**在渲染中是**平行**的。
+- 如果投影的宽高度的纵横比与画布的宽高度的纵横比不同，则**渲染失真**。
+- 对于**left**，**right**，**bottom**和**top**的值是直观的。
+  **near** 和 **far** 的值不直观。最重要的是，考虑要包含在渲染中的沿 z 轴的值范围。**near** 将是最大的 z 值，**far**将是最小值。需要**翻转**这两个值，因为使用的**左手坐标系**。
+  例如：如果您想查看 z = 10 和 z = 2 之间的所有内容，则使 Near = -10 和 far = -2。如果您想查看 z = -3 和 z = -12 之间的所有内容，则使 near = 3 和 far = 12。例如，如果您想查看原点 10 个单位内的所有内容，您的参数为`createOrthographic` 会 `(-10, 10, -10, 10, -10, 10)` 。您还可以将 **near** 和 **far** 值视为沿-Z 轴的距离，允许负距离。
+- 如果*left*的值大于*right*的值，则世界将围绕 Y 轴进行镜像。如果*底部*的值大于*顶部*的值，则世界是关于 X 轴的镜像。如果您混淆了*near* 和*far*值，则深度裁剪将向后。
+- 的*观察窗*是的前侧*观看的体积*。它在左下角由点*(left, bottom, near) 定义*，在右上角由点*(right, top, near) 定义*。
+
+#### 正交投影矩阵
+
+> 投影矩阵必须将场景中的顶点放入**裁剪体** (clipping volume) 中
+
+ **裁剪体**是右图中显示的 2 个单位宽的立方体。
+
+![剪辑音量](readme.assets/clipping_volume.png)
+
+这可以通过三个转换轻松完成：
+
+1. 平移由 `createOrthographic` 参数定义的体积，使其以原点为中心。
+2. 使用每个轴的适当比例因子将体积缩放为 2 个单位宽的立方体。
+3. 翻转 z 轴以匹配裁剪空间的坐标系。。
+
+#### 在原点居中查看体积
+
+使用参数方程来计算两个值之间的中点。当**t**等于 0.5 时计算中点。因此，之间的中点**left**和**right**可以这样计算
+
+```javascript
+mid_x  =  (1 - 0.5) * left + 0.5 * right;   // t = 0.5
+```
+
+简化：
+
+```javascript
+mid_x  =  (left + right) / 2;   // t = 0.5
+```
+
+计算视点的中心，需要反转 near 和 far 的值，使他变成右手坐标系值。
+
+```javascript
+mid_x = ( left   +  right) / 2; 
+mid_y = ( bottom +  top  ) / 2; 
+mid_z = (-near   + -far  ) / 2;
+```
+
+##### 矩阵：
+
+$$
+centerAboutOrigin =
+\begin{bmatrix}
+1&0&0&-mid_x \\
+0&0&1&-mid_y \\
+0&0&0&-mid_z \\
+0&1&0&1      \\
+\end{bmatrix}
+$$
+
+#### 缩放查看体积
+
+> 缩放需要一个简单的比率。
+
+如果查看体积的当前宽度为 10 ，则将值缩放为 2 个单位宽 需要 2/10 或 1/5 的比例因子。
+
+```javascript
+scale_x = 2.0 / (right - left);
+scale_y = 2.0 / (up - bottom);
+scale_z = 2.0 / (far - near);
+```
+
+##### 矩阵：
+
+$$
+scaleViewingVolume  =
+\begin{bmatrix}
+scale_x&0&0&0 \\
+0&scale_y&0&0 \\
+0&0&scale_z&0 \\
+0&0&0&1      \\
+\end{bmatrix}
+$$
+
+#### 切换坐标系
+
+右手坐标系和左手坐标系之间的**唯一区别是 z 轴的方向**。
+
+通过将*z*分量乘以 -1，可以在两个系统之间切换顶点。
+
+##### 矩阵：
+
+$$
+convertToLeftHanded  =
+\begin{bmatrix}
+1&0&0&0  \\
+0&1&0&0  \\
+0&0&-1&0 \\
+0&0&0&1  \\
+\end{bmatrix}
+$$
+
+#### 正交投影变换
+
+正交变换由这三个从右到左应用的顺序变换组成：
+$$
+\begin{bmatrix}
+1&0&0&0  \\
+0&1&0&0  \\
+0&0&-1&0 \\
+0&0&0&1  \\
+\end{bmatrix}
+*
+\begin{bmatrix}
+scale_x&0&0&0 \\
+0&scale_y&0&0 \\
+0&0&scale_z&0 \\
+0&0&0&1      \\
+\end{bmatrix}
+*
+\begin{bmatrix}
+1&0&0&-mid_x \\
+0&0&1&-mid_y \\
+0&0&0&-mid_z \\
+0&1&0&1      \\
+\end{bmatrix}
+*
+\begin{bmatrix}
+x \\
+y \\
+z \\
+1
+\end{bmatrix}
+=
+\begin{bmatrix}
+x' \\
+y' \\
+z' \\
+w'
+\end{bmatrix}
+$$
+如果你简化这些术语，你会得到这个转换：
+$$
+\begin{bmatrix}
+2/(right-left)&0&0&-(right+left)/(right-left) \\
+0& 2/(top-bottom)&0&-(top+bottom)/(top-bottom) \\
+0&0&-2/(far-near)&-(far+near)/(far-near) \\
+0&0&0&1
+\end{bmatrix}
+$$
+
+
+
+### 透视投影[^6.3]
+
+> **透视投影** (Perspective Projections) 渲染虚拟场景，使其看起来像来自真实世界相机的视图。
+>
+> 离相机更远的物体看起来更小，所有的线似乎都向着倾斜平行线的[消失点](https://en.wikipedia.org/wiki/Vanishing_point)投射。
+
+#### 透视投影的视域
+
+透视投影定义了一个 3D 区域，该区域沿着四个边界射线从相机的位置投影出来。
+
+光线形成一个[视锥](https://en.wikipedia.org/wiki/Viewing_frustum)，如右图所示。所述**平截头体** (frustum) 包括一个前表面和后裁剪面平行于XY平面。该视锥体内的任何模型都将被渲染。此视锥体之外的任何模型都将被**裁剪**。
+
+![查看平截头体](readme.assets/viewing_frustum.png)
+
+#### createPerspective() 函数
+
+> 功能`createPerspective()`中`Learn_webgl_matrix.js` 模块创建一个透视投影变换矩阵。
+
+该函数需要 4 个参数:
+
+```javascript
+/** -----------------------------------------------------------------
+ * Create a perspective projection matrix using a field-of-view and an aspect ratio.
+ * @param fovy   Number 视锥体的上下边之间的角度
+ * @param aspect 查看窗口的纵横比（宽度/高度）。
+ * @param near   沿-Z轴到近剪裁平面的距离。
+ * @param far    沿-Z轴到远剪裁平面的距离。
+ * @return Float32Array The perspective transformation matrix.
+ */
+function createPerspective(fovy, aspect, near, far)
+```
+
+![查看平截头体](readme.assets/side_view_frustum.png)
+
+这四个参数定义了一个截锥体。该`fovy`参数代表“视场y轴”，是相机镜头的垂直角度。
+
+`fovy` 常用范围为 30 到 60 度。
+`aspect`  比率参数为宽度由画布窗口的高度分割。
+`near`和 `far` **距离**是要选择， `near` 总是小于 `far`。
+
+`near` 和 `far` 的之间的距离应尽可能小，以减少精度问题。
+因为视锥体被映射到 2 个单位深的裁剪体积中。为典型值`near`和`far`可能为0.1至100.0。
+一般来说，`near`尽量远离相机，使`far` 尽可能靠近相机。
+
+#### createFrustum() 函数
+
+> 功能`createFrustum()`中`Learn_webgl_matrix.js` 模块创建一个透视投影变换矩阵。
+
+该函数需要 6 个参数，如下面的函数原型所示。
+
+```javascript
+/** -----------------------------------------------------------------
+ * Set a perspective projection matrix based on limits of a frustum.
+ * @param left   Number x轴的最左侧，裁切的最左边
+ * @param right  Number x轴的最右侧，裁切的最右边
+ * @param bottom Number y轴的最上边，裁切的最上边
+ * @param top    Number y轴的最下边，裁切的最下边
+ 						当bottom和top翻转时，画面将会翻转
+ * @param near   Number z轴起始的裁切范围 (最近视距)
+ * @param far    Number z轴最远的裁切范围 (最远视距)
+ */
+function createFrustum (left, right, bottom, top, near, far)
+```
+
+3D 指向`(left, bottom, near)`并`(right, top, near)`定义查看窗口的左下角和右上角。
+
+透视的角度取决于截锥体的顶点 (查看窗口的中心) (相机坐标) (视锥顶点)。
+
+##### 观察创建的透视投影的以下特征：
+
+- `createFrustum` 允许您创建一个与 -Z 轴 “偏离中心”的**平截头体**，但其视野始终平行于 **-Z 轴**。
+- 确保画布尺寸的纵横比（宽度/高度）与查看窗口（右-左）/（上-下）的纵横比一致。如果纵横比不同，渲染将出现倾斜。
+- `near`  值的更改对视锥有深远的影响，因为这是从相机到观察窗的距离，整个视锥由观察窗的角定义。
+  更改`near` 值从根本上改变了相机镜头的视野（由前面描述`fovy`的`createPerspective`函数中的参数控制）。
+- `far` 的值更改，仅影响剪裁。
+- 改变 `left` 和 `right`的值，转变从原点远离相机的位置。
+- 改变 `top` 和 `bottom` 的值，转变从原点远离相机的位置。
+
+#### 透视投影矩阵
+
+投影矩阵必须将场景中的顶点放入*裁剪体中*，*裁剪体*是右侧图像中显示的 2 个单位宽的立方体。
+
+![剪切体积](readme.assets/clipping_volume-16345468145274.png)
+
+因为需要对顶点进行更多操作。数学很容易，但需要一些特殊的技巧才能将数学转化为 4x4 变换矩阵。我们需要执行以下步骤来创建透视投影变换矩阵：
+
+1. 将截锥体的顶点平移到原点。
+2. 执行透视计算。
+3. 将查看窗口中的 2D (x',y') 值缩放为 2×2 单位正方形：(-1,-1) 到 (+1,+1)。
+4. 将深度值 (z) 缩放到归一化范围 (-1,+1)。
+5. 翻转 z 轴的方向以匹配剪切体积的方向。
+
+#### 将视锥顶点移动到原点
+
+透视平截头体可以沿 X 轴或 Y 轴从全局原点偏移。我们需要将视锥体的顶点置于全局原点 (世界原点) ，以便透视计算工作。
+
+```
+mid_x = (left + right) * 0.5;
+mid_y = (bottom + top)  * 0.5;
+```
+
+$$
+\begin{bmatrix}
+1&0&0&-(right+left)/2 \\
+0&1&0&-(top+bottom)/2 \\
+0&0&1&0 \\
+0&0&0&1
+\end{bmatrix}
+*
+\begin{bmatrix}
+x \\
+y \\
+z \\
+1
+\end{bmatrix}
+=
+\begin{bmatrix}
+x' \\
+y' \\
+z' \\
+w' \\
+\end{bmatrix}
+$$
+
+#### 透视计算
+
+我们需要将场景中的每个顶点投影到 2D 视图窗口中的正确位置。2D 观察窗是`near`平截头体的平面。
+
+研究右图。请注意，顶点`(x,y,z)` 通过将光线投影到相机（显示为橙色光线）而投影到查看窗口。
+
+顶点的渲染位置是`(x',y',near)`。
+
+从图中您可以看到`y`和`y'`值通过成比例的直角三角形相关。这两个三角形必须具有相同的边长比。
+
+![透视鸿沟](readme.assets/perspective_divide.png)
+
+我们可以通过乘法和除法来计算 2D 视图窗口中 3D 顶点的位置
+
+```javascript
+x' = (x * near) / z 
+y' = (y * near) / z
+```
+
+由于相机前面顶点的所有*z*值都是负值，并且*z*的值被视为距离，因此我们需要对*z*的值取反。
+
+```javascript
+x' = (x * near) / (-z)
+y' = (y * near) / (-z)
+```
+
+4×4 变换矩阵是项的线性组合。也就是说，我们可以进行类似 的计算`a*x + b*y + c*z + d`，但不能进行类似 的计算`a*x/z + ...`，其中顶点的*x*和*z 分*量值在单个项中使用。
+
+
+
+####  视口
+
+投影转换之后，您的模型就可以进行*裁剪了*，这会丢弃任何不在相机视野范围内的原始元素（点、线或三角形）。剪辑后创建图像的时间！
+
+#### 视口变换 Viewport Transformation
+
+您的几何数据具有 (x,y,z) 值，这些值位于以原点为中心的 2×2×2*裁剪体积内*。
+
+图像将被映射到 HTML画布元素，因此图像被创建为与画布元素相同的大小（以像素为单位）。
+
+WebGL 图像使用以左下角为原点的坐标系，+X 轴向右，+Y 轴向上。
+
+![图像坐标系](readme.assets/image_coordinate_system.png)
+
+来自**裁剪体**的顶点数据需要映射到图像位置。这是通过两个简单的转换完成的：
+
+1. 将 (-1,-1) 到 (+1,+1) 查看窗口缩放到图像的宽度和高度。
+2. 将左下角 (-width/2,-height/2) 偏移到图像的原点。
+
+$$
+\begin{bmatrix}
+1&0&0&width/2 \\
+0&1&0&height/2 \\
+0&0&1&0 \\
+0&0&0&1
+\end{bmatrix}
+*
+\begin{bmatrix}
+width/2&0&0&0 \\
+0&height/2&0&0 \\
+0&0&1&0 \\
+0&0&0&1
+\end{bmatrix}
+*
+\begin{bmatrix}
+x \\
+y \\
+z \\
+1 \\
+\end{bmatrix}
+=
+\begin{bmatrix}
+xImage \\
+yImage \\
+zDepth \\
+1 \\
+\end{bmatrix}
+$$
+
+我们仅变换每个顶点的*x*和*y*坐标，因为我们正在创建 2D 图像。
+
+您没有实现视口转换。它是由图形管道在内部完成的。
+
+##### 可以只渲染填充画布的一部分。
+
+默认情况下，画布的宽度和高度是视口的宽度和高度。
+
+通过调整 `gl.viewport(x_offset,y_offset,width,height)` 为较小的图像指定偏移量和大小。
+$$
+\begin{bmatrix}
+1&0&0&x\_offset/2 \\
+0&1&0&y\_offset/2 \\
+0&0&1&0 \\
+0&0&0&1
+\end{bmatrix}
+*
+\begin{bmatrix}
+1&0&0&width/2 \\
+0&1&0&height/2 \\
+0&0&1&0 \\
+0&0&0&1
+\end{bmatrix}
+*
+\begin{bmatrix}
+width/2&0&0&0 \\
+0&height/2&0&0 \\
+0&0&1&0 \\
+0&0&0&1
+\end{bmatrix}
+*
+\begin{bmatrix}
+x \\
+y \\
+z \\
+1 \\
+\end{bmatrix}
+=
+\begin{bmatrix}
+xImage \\
+yImage \\
+zDepth \\
+1 \\
+\end{bmatrix}
+$$
+
+#### 鼠标事件进入世界位置
+
+
+
+### 难点/疑问
+
+- 齐次坐标（homogeneous coordinates）
+- 关于代码和矩阵不熟悉
+
+
+
+
+
+### 相关链接
+
+[^6.1]: Introduction to Projections http://learnwebgl.brown37.net/08_projections/projections_introduction.html
+
+[^6.2]: Orthographic Projections http://learnwebgl.brown37.net/08_projections/projections_ortho.html
+
+[^6.3]: Perspective Projections http://learnwebgl.brown37.net/08_projections/projections_perspective.html
+[^6.4]:  Viewports http://learnwebgl.brown37.net/08_projections/projections_viewport.html
+
+
+
 ## 实例化操作
 
-操作，了解webGL相机 http://learnwebgl.brown37.net/07_cameras/camera_lookat/camera_lookat.html
+操作，了解**webGL相机** http://learnwebgl.brown37.net/07_cameras/camera_lookat/camera_lookat.html
 
+操作，了解**正交投影** http://learnwebgl.brown37.net/08_projections/create_ortho/create_ortho.html
+
+操作，了解**透视投影** http://learnwebgl.brown37.net/08_projections/create_perspective/create_perspective.html
