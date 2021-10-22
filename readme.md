@@ -3057,6 +3057,189 @@ WebGL 4x4 转换矩阵是一种一维数组，`Float32Array` 其中包含 16 个
 
 
 
+## 2021.10.22
+
+今天之后，该笔记不再继续记录。剩余需要学习的内容将整合成另一份笔记。
+
+
+
+### WebGL 三维点光源[^10.1]
+
+从三维空间中选一个点当作光源， 然后在**着色器中根据光源和表面位置计算光照方向的话**，就是**点光源**了。
+
+在片断着色器中需要将表面到光源的方向进行单位化， 注意，虽然我们可以在顶点着色器中传递单位向量， 但是 `varying` 会进行插值再传给片断着色器， 所以片断着色器中的向量基本上不是单位向量了。
+
+```glsl
+attribute vec4 a_position;
+attribute vec3 a_normal;
+ 
+uniform vec3 u_lightWorldPosition; // 需要一个光源位置
+ 
+uniform mat4 u_world;
+uniform mat4 u_worldViewProjection;
+uniform mat4 u_worldInverseTranspose;
+ 
+varying vec3 v_normal;
+ 
+varying vec3 v_surfaceToLight;
+ 
+void main() {
+  // 将位置和矩阵相乘
+  gl_Position = u_worldViewProjection * a_position;
+ 
+  // 重定向法向量并传递给片断着色器
+  v_normal = mat3(u_worldInverseTranspose) * a_normal;
+ 
+  // 计算表面的世界坐标
+  vec3 surfaceWorldPosition = (u_world * a_position).xyz;
+ 
+  // 计算表面到光源的方向
+  // 传递给片断着色器
+  v_surfaceToLight = u_lightWorldPosition - surfaceWorldPosition;
+}
+```
+
+##### 镜面高光
+
+> 观察现实世界中的物体，如果物体表面恰好将光线反射到你眼前， 就会显得非常明亮，像镜子一样。
+
+如果入射角和反射角恰好与眼睛和和光源的夹角相同，那么光线就会反射到眼前。
+
+物体表面到视区/眼睛/相机的方向，再除以 2 得到 `halfVector` 向量， 将这个向量和法向量比较，如果方向一致，那么**光线就会被反射到眼前**。
+
+如何确定方向是否一致呢？用之前的**点乘**就可以了。1 表示相符， 0 表示垂直，-1 表示相反。
+
+但这种效果所展示的镜面高光特别亮！我们可以将点乘结果进行求幂运算来解决太亮的问题， 它会把高光从**线性变换**变成**指数变换**。
+
+
+
+### WebGL 三维聚光灯[^10.2]
+
+点光源想象成一个点，光线从那个点照向所有方向。 实现聚光灯只需要以那个点为起点选择一个方向，作为聚光灯的方向， 然后将其他光线方向与所选方向点乘，然后随意选择一个限定范围， 然后判断光线是否在限定范围内，如果不在就不照亮。
+
+有一个 GLSL 函数叫做 `step`，它获取两个值，如果第二个值大于或等于第一个值就返回 1.0， 否则返回 0。伪代码：
+
+```javascript
+function step(a, b) {
+   if (b >= a) {
+       return 1;
+   } else {
+       return 0;
+   }
+}
+```
+
+```glsl
+float dotFromDirection = dot(surfaceToLightDirection, -u_lightDirection);
+// 如果光线在聚光灯范围内 inLight 就为 1，否则为 0
+float inLight = step(u_limit, dotFromDirection);
+float light = inLight * dot(normal, surfaceToLightDirection);
+float specular = inLight * pow(dot(normal, halfVector), u_shininess);
+```
+
+但这种聚光灯效果非常粗糙和僵硬。只有在聚光灯范围内或外， 在外面就直接变黑，没有任何过渡。
+
+要修正它我们可以使用两个限定值代替原来的一个， 一个内部限定一个外部限定。如果在内部限定内就使用 1.0， 在外部限定外面就使用 0.0，在内部和外部限定之间就使用 1.0 到 0.0 之间的插值。
+
+如果 `u_innerLimit` 和 `u_outerLimit`相等那么 `limitRange` 就会是 0.0 。除以 0 就会**导致 undefined**。
+
+GLSL 也有一个函数可以稍微做一些简化，叫做 `smoothstep`，和 `step` 相似返回一个 0 到 1 之间的值，但是它获取最大和最小边界值，返回该值在边界范围映射到 0 到 1 之间的插值。
+
+> 如果可能的话我尽量不在着色器中使用条件语句， 原因是我认为着色器并不是真的使用条件语句，如果你在着色器中使用着色器， 编译器会在代码中扩展很多 0 和 1 的乘法运算来实现，所以这里并不是真的条件语句， 它会将你的代码扩展成多种组合。
+
+
+
+### GLSL 中的 undefined 情况[^10.2]
+
+GLSL 中的一些函数在某些情况下会出现 undefined，对一个负值使用`pow`求幂就是一个例子， 因为结果是无法预期。我们遇到的另一个例子就是上方的`smoothstep`。
+
+你应该注意这些情况，否则你的着色器会在不同的设备上得到不同的结果。 [规范第 8 节](https://www.khronos.org/files/opengles_shading_language.pdf) 列出了所有内置函数，它们的用法，是否会出现 undefined 情况。
+
+这是会出现undefined情况的列表。注意`genType` 表示 `float`, `vec2`, `vec3`, 或 `vec4`。
+
+```
+genType asin (genType x)
+```
+
+反正弦函数，返回角度 x 的反正弦值，返回值在 [−π/2, π/2] 之间，如果 ∣x∣ > 1 导致undefined。
+
+```
+genType acos (genType x)
+```
+
+反余弦函数。返回角度 x 的反余弦值，返回值范围为[0, π]， 如果 ∣x∣ > 1 导致undefined。
+
+```
+genType atan (genType y, genType x)
+```
+
+反正切函数。返回一个正切为 y/x 的角度， x 和 y 的符号决定象限，返回值范围为[−π,π]，如果 x 和 y 都是 0 导致undefined。
+
+```
+genType pow (genType x, genType y)
+```
+
+返回 x 的 y 次幂, 例如, xy。 如果 x < 0 导致undefined，如果 x = 0 并且 y <= 0 导致undefined。
+
+```
+genType log (genType x)
+```
+
+返回 x 的自然对数, 例如, 返回 y 值满足 x = ey。 如果 x <= 0 导致undefinded。
+
+```
+genType log2 (genType x)
+```
+
+返回以 2 为底 x 的对数。例如，返回 y 满足 x=2y。 如果 x <= 0 导致undefinded。
+
+```
+genType sqrt (genType x)
+```
+
+返回 √x . 如果 x < 0 导致undefinded。
+
+```
+genType inversesqrt (genType x)
+```
+
+返回 1/√x. 如果 x <= 0 导致undefinded。
+
+```
+genType clamp (genType x, genType minVal, genType maxVal)genType clamp (genType x, float minVal, float maxVal)
+```
+
+返回 min (max (x, minVal), maxVal). 如果 minVal > maxVal 导致undefined。
+
+```
+genType smoothstep (genType edge0, genType edge1, genType x)genType smoothstep (float edge0, float edge1, genType x)
+```
+
+如果 x <= edge0 返回 0.0，如果 x >= edge1 返回 1.0， 当 edge0 < x < edge1 使用 Hermite 插值到 0 到 1 之间。 当你希望在阈值范围内平滑插值时这个函数就很有用。相当于：
+
+```
+ genType t;
+ t = clamp ((x – edge0) / (edge1 – edge0), 0, 1);
+ return t * t * (3 – 2 * t);
+```
+
+如果 edge0 >= edge1 导致undefined。
+
+
+
+### 疑问/难点
+
+- **点乘**
+
+
+
+### 相关链接
+
+[^10.1]: WebGL 三维点光源 https://webglfundamentals.org/webgl/lessons/zh_cn/webgl-3d-lighting-point.html
+[^10.2]:WebGL 三维聚光灯 https://webglfundamentals.org/webgl/lessons/zh_cn/webgl-3d-lighting-spot.html
+
+
+
 ## 实例化操作
 
 操作，了解**webGL相机** http://learnwebgl.brown37.net/07_cameras/camera_lookat/camera_lookat.html
